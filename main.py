@@ -113,19 +113,19 @@ class GeffesGenerator:
     
 class StopAndGoGenerator():
     def __init__(self, key1, key2, key3):
-        self.x1 = XORShiftLFSR32(key1)
-        self.x2 = XORShiftLFSR32(key2)
-        self.x3 = XORShiftLFSR32(key3)
+        self.x1 = XORShiftLFSR64(key1)
+        self.x2 = XORShiftLFSR64(key2)
+        self.x3 = XORShiftLFSR64(key3)
         self.b1 = self.x1.next() & 1
         self.b2 = self.x2.next() & 1
         self.b3 = self.x3.next() & 1
     
     def next(self):
-        self.b1 = self.x1.next() & 1
+        self.b1 = self.x1.next() >> 1
         if (self.b1 == 1):
-            self.b2 = self.x2.next() & 1
+            self.b2 = self.x2.next() >> 1
         else:
-            self.b3 = self.x3.next() & 1
+            self.b3 = self.x3.next() >> 1
         
         return self.b2 ^ self.b3
     
