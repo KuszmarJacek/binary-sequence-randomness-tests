@@ -1,3 +1,5 @@
+import ctypes
+
 # https://en.wikipedia.org/wiki/Xorshift
 class XORShiftLFSR32:
     def __init__(self, seed):
@@ -135,18 +137,47 @@ class StopAndGoGenerator():
             value = (value << 1) | self.next()
         return bin(value)
 
+class LFSR:
+    def __init__(self, feedbackPoly, initialRegister):
+        self.register = initialRegister
+        self.feedbackPoly = feedbackPoly
 
+    def next(self):
+        res = 1
+        print(self.register)
+        for k in self.feedbackPoly:
+            res ^= self.register[k]
+        poppedRegister = self.register.pop()
+        self.register.insert(0, poppedRegister)
+        self.register[0] = res
+        print(self.register)
+        print(res)
+        return res
+
+    def get_n_bits(self, n):
+        for i in range(n):
+            print(self.register)
+            print(self.next())
 
 if __name__ == "__main__":
-    lfsr = XORShiftLFSR32(123456)
-    print(lfsr.next())
-    generator = GeffesGenerator(123, 456, 789)
-    print(generator.get_n_bit(10))
+    initialRegister = [1, 0, 1, 1, 1, 0, 1, 0]
+    reg = LFSR([0, 1, 2], initialRegister)
+    bits = []
+    bits.append(reg.next())
+    bits.append(reg.next())
+    bits.append(reg.next())
+    print(bits)
+
+    # lfsr = XORShiftLFSR32(123456)
+    # print(lfsr.next())
+    # print(bin(lfsr.next()))
+    # generator = GeffesGenerator(123, 456, 789)
+    # print(generator.get_n_bit(10))
 
 
-    sprng = SPRNG(0b11001, 0b101, 0b10011, 0b1100)
-    print(sprng.get_n_bits(10))
+    # sprng = SPRNG(0b11001, 0b101, 0b10011, 0b1100)
+    # print(sprng.get_n_bits(10))
 
-    stopAndGoGenerator = StopAndGoGenerator(123, 456, 789)
-    print(stopAndGoGenerator.get_n_bit(10))
+    # stopAndGoGenerator = StopAndGoGenerator(123, 456, 789)
+    # print(stopAndGoGenerator.get_n_bit(10))
             
