@@ -1,102 +1,37 @@
-import ctypes
-
-# https://en.wikipedia.org/wiki/Xorshift
-class XORShiftLFSR32:
-    def __init__(self, seed):
-        self.state = seed
-        
-    def next(self):
-        self.state ^= self.state << 13
-        self.state ^= self.state >> 17
-        self.state ^= self.state << 5
-        return self.state & 0xFFFFFFFF
-    
-class XORShiftLFSR64:
-    def __init__(self, seed):
-        self.state = seed
-        
-    def next(self):
-        self.state ^= self.state << 13
-        self.state ^= self.state >> 7
-        self.state ^= self.state << 17
-        return self.state & 0xFFFFFFFFFFFFFFFF
-
-# https://en.wikipedia.org/wiki/Shrinking_generator
-# https://github.com/mfukar/lfsr/blob/master/lfsr.py
-class GLFSR:
-    def __init__(self, polynom, initial_value):
-        self.polynom = polynom | 1
-        self.data = initial_value
-        tmp = polynom
-        self.mask = 1
-
-        while tmp != 0:
-            if tmp & self.mask != 0:
-                tmp ^= self.mask
-
-            if tmp == 0:
-                break
-
-            self.mask <<= 1
-
-    def next_bit(self):
-        self.data <<= 1
-
-        if self.data & self.mask != 0:
-            self.data ^= self.polynom
-            return 1
-        else:
-            return 0
-
-    def get_n_bit(self, n):
-        value = 0
-        for i in range(n):
-            value = (value << 1) | self.next_bit()
-        return bin(value)
-
 # https://en.wikipedia.org/wiki/Shrinking_generator 
-class SPRNG:
-    def __init__(self, polynom_d, init_value_d, polynom_c, init_value_c):
-        self.glfsr_d = GLFSR(polynom_d, init_value_d)
-        self.glfsr_c = GLFSR(polynom_c, init_value_c)
+class ShrinkingGenerator:
+    def __init__(self, feedbackPoly1, init1, feedbackPoly2, init2):
+        self.x1 = LFSR(feedbackPoly1, init1)
+        self.x2 = LFSR(feedbackPoly2, init2)
 
-    def next_bit(self):
-        bit = 0
-        bitpos = 1
+    def next(self):    
+        b1 = self.x1.next()
+        b2 = self.x2.next()
 
-        while True:
-            bit_d = self.glfsr_d.next_bit()
-            bit_c = self.glfsr_c.next_bit()
+        while b1 == 0:
+            b1 = self.x1.next()
+            b2 = self.x2.next()
 
-            if bit_c != 0:
-                bit_r = bit_d
-                bit |= bit_r << bitpos
-
-                bitpos -= 1
-
-                if bitpos < 0:
-                    break
-
-        return bit
+        return b2
             
     def get_n_bits(self, n):
-        value = 0
+        value = ""
         for i in range(n):
-            value = (value << 1) | self.next_bit()
-        return bin(value)
-            
+            value = value + str(self.next())
+        return value
+           
 # https://en.wikipedia.org/wiki/Correlation_attack
 class GeffesGenerator:
-    def __init__(self, key1, key2, key3):
-        self.x1 = XORShiftLFSR32(key1)
-        self.x2 = XORShiftLFSR32(key2)
-        self.x3 = XORShiftLFSR32(key3)
+    def __init__(self, feedbackPoly1, init1, feedbackPoly2, init2, feedbackPoly3, init3):
+        self.x1 = LFSR(feedbackPoly1, init1)
+        self.x2 = LFSR(feedbackPoly2, init2)
+        self.x3 = LFSR(feedbackPoly3, init3)
 
     def get_n_bit(self, n):
-        value = 0
+        value = ""
         for i in range(n):
-            value = (value << 1) | self.next()
-        return bin(value)
+            value = value + str(self.next())
+        return value
         
     # from lecture
     def next(self):
@@ -114,10 +49,10 @@ class GeffesGenerator:
         return (b1 & b2) ^ ((not b2) & b3)
     
 class StopAndGoGenerator():
-    def __init__(self, key1, key2, key3):
-        self.x1 = XORShiftLFSR32(key1)
-        self.x2 = XORShiftLFSR32(key2)
-        self.x3 = XORShiftLFSR32(key3)
+    def __init__(self, feedbackPoly1, init1, feedbackPoly2, init2, feedbackPoly3, init3):
+        self.x1 = LFSR(feedbackPoly1, init1)
+        self.x2 = LFSR(feedbackPoly2, init2)
+        self.x3 = LFSR(feedbackPoly3, init3)
         self.b1 = self.x1.next() & 1
         self.b2 = self.x2.next() & 1
         self.b3 = self.x3.next() & 1
@@ -132,10 +67,10 @@ class StopAndGoGenerator():
         return self.b2 ^ self.b3
     
     def get_n_bit(self, n):
-        value = 0
+        value = ""
         for i in range(n):
-            value = (value << 1) | self.next()
-        return bin(value)
+            value = value + str(self.next())
+        return value
 
 class LFSR:
     def __init__(self, feedbackPoly, initialRegister):
@@ -144,20 +79,93 @@ class LFSR:
 
     def next(self):
         res = 1
-        print(self.register)
+        # print(self.register)
         for k in self.feedbackPoly:
             res ^= self.register[k]
         poppedRegister = self.register.pop()
         self.register.insert(0, poppedRegister)
         self.register[0] = res
-        print(self.register)
-        print(res)
+        # print(self.register)
+        # print(res)
         return res
 
     def get_n_bits(self, n):
         for i in range(n):
             print(self.register)
             print(self.next())
+
+def pokerTest(stream):
+    counters = [0] * 16
+
+    for i in range(5000):
+        pack = int(stream[i * 4 : i * 4 + 4], 2)
+        counters[pack] += 1
+
+    sum = 0
+    for v in counters:
+        sum += (v * v)
+    
+    poker = 16 / 5000 * sum - 5000
+
+    
+    if poker > 2.16 and poker < 46.17:
+        print("Positive poker test result: " + str(poker))
+    else:
+        print("Negative poker test result: " + str(poker))
+
+def longRunsTest(stream):
+    sameCnt = 0
+    lastChar = ''
+    positive = True
+
+    for i in range(len(stream)):
+        if stream[i] == lastChar:
+            sameCnt = sameCnt + 1
+        else:
+            lastChar = stream[i]
+            sameCnt = 1
+
+        if sameCnt > 26:
+            positive = False
+            break
+
+    if positive:
+        print("Positive long runs test")
+    else:
+        print("Negative long runs test")
+
+def runsTest(stream):
+    sameCnt = 0
+    lastChar = ''
+    counters = [0] * 6
+
+    for i in range(len(stream)):
+        if stream[i] == lastChar:
+            sameCnt = sameCnt + 1
+        else:
+            lastChar = stream[i]
+            if sameCnt <= 6 and sameCnt > 0:
+                counters[sameCnt - 1] = counters[sameCnt - 1] + 1
+            else:
+                counters[5] = counters[5] + 1
+            sameCnt = 1
+    
+    if sameCnt <= 6:
+        counters[sameCnt - 1] = counters[sameCnt - 1] + 1
+    else:
+        counters[5] = counters[5] + 1
+
+    if\
+        counters[0] >= 2315 and counters[0] <= 2685 or\
+        counters[1] >= 1114 and counters[1] <= 1386 or\
+        counters[2] >= 527 and counters[2] <= 723 or\
+        counters[3] >= 240 and counters[3] <= 384 or\
+        counters[4] >= 103 and counters[4] <= 209 or\
+        counters[5] >= 103 and counters[5] <= 2685:
+        print("Negative runs test")
+    else:
+        print("Positive runs test")
+     
 
 if __name__ == "__main__":
     initialRegister = [1, 0, 1, 1, 1, 0, 1, 0]
@@ -166,18 +174,35 @@ if __name__ == "__main__":
     bits.append(reg.next())
     bits.append(reg.next())
     bits.append(reg.next())
-    print(bits)
+    print("Trzy bity z LFSR:      " + str(bits))
 
-    # lfsr = XORShiftLFSR32(123456)
-    # print(lfsr.next())
-    # print(bin(lfsr.next()))
-    # generator = GeffesGenerator(123, 456, 789)
-    # print(generator.get_n_bit(10))
+    geffeGenerator = GeffesGenerator([0, 1, 2], [1, 0, 1, 1, 1, 0, 1, 0], [2, 3, 1], [1, 1, 1, 1, 1, 1, 1, 0], [3, 4, 5], [1, 0, 0, 1, 1, 0, 1, 1])
+    geffeBits = geffeGenerator.get_n_bit(20000)
+    print("Generator geffe:       " + geffeGenerator.get_n_bit(100))
+
+    stopAndGoGenerator = StopAndGoGenerator([0, 1, 2], [1, 0, 1, 1, 1, 0, 1, 0], [2, 3, 1], [1, 1, 1, 1, 1, 1, 1, 0], [3, 4, 5], [1, 0, 0, 1, 1, 0, 1, 1])
+    stopAndGoBits = stopAndGoGenerator.get_n_bit(20000)
+    print("Generator stop and go: " + stopAndGoGenerator.get_n_bit(100))
+
+    shrinkingGenerator = ShrinkingGenerator([0, 1, 2], [1, 0, 1, 1, 1, 0, 1, 0], [2, 3, 1], [1, 1, 1, 1, 1, 1, 1, 0])
+    shrinkingBits = shrinkingGenerator.get_n_bits(20000)
+    print("Shrinking generator:   " + shrinkingGenerator.get_n_bits(100))
+
+    print("Test results for geffe")
+    pokerTest(geffeBits)
+    longRunsTest(geffeBits)
+    runsTest(geffeBits)
+
+    print("Test results for stop and go")
+    pokerTest(stopAndGoBits)
+    longRunsTest(stopAndGoBits)
+    runsTest(stopAndGoBits)
+
+    print("Test results for shrinking")
+    pokerTest(shrinkingBits)
+    longRunsTest(shrinkingBits)
+    runsTest(shrinkingBits)
 
 
-    # sprng = SPRNG(0b11001, 0b101, 0b10011, 0b1100)
-    # print(sprng.get_n_bits(10))
 
-    # stopAndGoGenerator = StopAndGoGenerator(123, 456, 789)
-    # print(stopAndGoGenerator.get_n_bit(10))
             
